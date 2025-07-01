@@ -1,0 +1,10 @@
+[package]
+name = "open_memprocfs_path"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "open_memprocfs_path"
+path = "src/main.rs"
+
+[dependencies] 

@@ -1,0 +1,7 @@
+This is a test file for memstrap.
+It contains various strings in different encodings.
+Some passwords: admin123, password, secret_key
+Email addresses: user@example.com, test@domain.org
+File paths: C:\Windows\System32\notepad.exe, /usr/bin/bash
+URLs: https://www.example.com, http://localhost:8080
+Binary data mixed with text: Hello World!
