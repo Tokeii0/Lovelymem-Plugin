@@ -44,6 +44,7 @@ fn main() -> Result<()> {
         config.get_encodings(),
         config.search.clone(),
         config.regex,
+        config.context_bytes,
     ).map_err(|e| {
         eprintln!("Error creating string extractor: {}", e);
         std::process::exit(1);

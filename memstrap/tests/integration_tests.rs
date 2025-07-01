@@ -16,6 +16,7 @@ fn test_end_to_end_extraction() {
         vec![memstrap::config::EncodingType::Ascii, memstrap::config::EncodingType::Utf8],
         None,
         false,
+        None,
     ).unwrap();
     
     // Read file and extract strings
@@ -38,12 +39,16 @@ fn test_csv_output() {
             content: "Hello World".to_string(),
             encoding: memstrap::Encoding::Utf8,
             byte_length: 11,
+            context_before: None,
+            context_after: None,
         },
         FoundString {
             offset: 20,
             content: "Test String".to_string(),
             encoding: memstrap::Encoding::Ascii,
             byte_length: 11,
+            context_before: None,
+            context_after: None,
         },
     ];
     
@@ -73,6 +78,7 @@ fn test_search_filtering() {
         vec![memstrap::config::EncodingType::Ascii],
         Some("Email".to_string()),
         false,
+        None,
     ).unwrap();
     
     let results = extractor.extract_strings(test_data, 0);
@@ -85,6 +91,7 @@ fn test_search_filtering() {
         vec![memstrap::config::EncodingType::Ascii],
         Some(r"\w+@\w+\.\w+".to_string()),
         true,
+        None,
     ).unwrap();
     
     let results = extractor.extract_strings(test_data, 0);
@@ -103,6 +110,7 @@ fn test_utf16_extraction() {
         vec![memstrap::config::EncodingType::Utf16Le],
         None,
         false,
+        None,
     ).unwrap();
     
     let results = extractor.extract_strings(utf16le_data, 0);
@@ -121,6 +129,7 @@ fn test_minimum_length_filtering() {
         vec![memstrap::config::EncodingType::Ascii],
         None,
         false,
+        None,
     ).unwrap();
     
     let results = extractor.extract_strings(test_data, 0);
@@ -129,4 +138,23 @@ fn test_minimum_length_filtering() {
     assert!(results.iter().all(|s| s.byte_length >= 20));
     // Should not find "Hi!" as it's too short
     assert!(!results.iter().any(|s| s.content == "Hi!"));
+}
+
+#[test]
+fn test_gbk_integration() {
+    // Create GBK test data: "你好世界测试" (Hello World Test) in GBK
+    let gbk_data = &[0xC4, 0xE3, 0xBA, 0xC3, 0xCA, 0xC0, 0xBD, 0xE7, 0xB2, 0xE2, 0xCA, 0xD4];
+
+    let extractor = StringExtractor::new(
+        4,
+        vec![memstrap::config::EncodingType::Gbk],
+        None,
+        false,
+        None,
+    ).unwrap();
+
+    let results = extractor.extract_strings(gbk_data, 0);
+    assert!(!results.is_empty());
+    assert!(results.iter().any(|s| s.content.contains("你好世界测试")));
+    assert!(results.iter().any(|s| s.encoding == memstrap::Encoding::Gbk));
 }

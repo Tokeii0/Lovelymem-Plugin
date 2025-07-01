@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![EncodingType::Ascii, EncodingType::Utf8],
         None,
         false,
+        None,
     )?;
     
     let results = extractor.extract_strings(sample_data, 0);
@@ -29,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![EncodingType::Ascii, EncodingType::Utf8],
         Some(r"\w+@\w+\.\w+".to_string()),
         true, // Use regex
+        None,
     )?;
     
     let email_results = email_extractor.extract_strings(sample_data, 0);
@@ -44,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![EncodingType::Ascii, EncodingType::Utf8],
         Some("password".to_string()),
         false, // Plain text search
+        None,
     )?;
     
     let password_results = password_extractor.extract_strings(sample_data, 0);
@@ -60,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![EncodingType::Utf16Le],
         None,
         false,
+        None,
     )?;
     
     let utf16_results = utf16_extractor.extract_strings(utf16_data, 0);
@@ -68,9 +72,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  - Offset: 0x{:X}, Encoding: {}, Content: \"{}\"", 
                 result.offset, result.encoding, result.content);
     }
-    
-    // Example 5: CSV output
-    println!("\n5. CSV output example:");
+
+    // Example 5: GBK string extraction
+    println!("\n5. GBK string extraction:");
+    // "你好世界" (Hello World) in GBK encoding
+    let gbk_data = &[0xC4, 0xE3, 0xBA, 0xC3, 0xCA, 0xC0, 0xBD, 0xE7];
+    let gbk_extractor = StringExtractor::new(
+        4,
+        vec![EncodingType::Gbk],
+        None,
+        false,
+        None,
+    )?;
+
+    let gbk_results = gbk_extractor.extract_strings(gbk_data, 0);
+    println!("Found {} GBK strings:", gbk_results.len());
+    for result in &gbk_results {
+        println!("  - Offset: 0x{:X}, Encoding: {}, Content: \"{}\"",
+                result.offset, result.encoding, result.content);
+    }
+
+    // Example 6: CSV output
+    println!("\n6. CSV output example:");
     let csv_file = "example_output.csv";
     CsvOutput::write_to_file(
         std::path::Path::new(csv_file),

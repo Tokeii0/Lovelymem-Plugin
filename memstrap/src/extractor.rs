@@ -2,6 +2,7 @@ use crate::config::EncodingType;
 use crate::error::Result;
 use regex::Regex;
 use std::collections::HashSet;
+use encoding_rs::GBK;
 
 /// Represents the encoding of a found string
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -10,6 +11,7 @@ pub enum Encoding {
     Utf8,
     Utf16Le,
     Utf16Be,
+    Gbk,
 }
 
 impl From<EncodingType> for Encoding {
@@ -19,6 +21,7 @@ impl From<EncodingType> for Encoding {
             EncodingType::Utf8 => Encoding::Utf8,
             EncodingType::Utf16Le => Encoding::Utf16Le,
             EncodingType::Utf16Be => Encoding::Utf16Be,
+            EncodingType::Gbk => Encoding::Gbk,
         }
     }
 }
@@ -30,6 +33,7 @@ impl std::fmt::Display for Encoding {
             Encoding::Utf8 => write!(f, "UTF-8"),
             Encoding::Utf16Le => write!(f, "UTF-16LE"),
             Encoding::Utf16Be => write!(f, "UTF-16BE"),
+            Encoding::Gbk => write!(f, "GBK"),
         }
     }
 }
@@ -41,6 +45,8 @@ pub struct FoundString {
     pub content: String,
     pub encoding: Encoding,
     pub byte_length: usize,
+    pub context_before: Option<Vec<u8>>,
+    pub context_after: Option<Vec<u8>>,
 }
 
 /// Configuration for string extraction
@@ -49,6 +55,7 @@ pub struct ExtractionConfig {
     pub encodings: HashSet<Encoding>,
     pub search_pattern: Option<String>,
     pub regex_pattern: Option<Regex>,
+    pub context_bytes: Option<usize>,
 }
 
 /// Main string extractor
@@ -63,6 +70,7 @@ impl StringExtractor {
         encodings: Vec<EncodingType>,
         search_pattern: Option<String>,
         use_regex: bool,
+        context_bytes: Option<usize>,
     ) -> Result<Self> {
         let encodings: HashSet<Encoding> = encodings.into_iter().map(Encoding::from).collect();
         
@@ -77,6 +85,7 @@ impl StringExtractor {
             encodings,
             search_pattern,
             regex_pattern,
+            context_bytes,
         };
 
         Ok(StringExtractor { config })
@@ -100,6 +109,11 @@ impl StringExtractor {
         // Extract UTF-16BE strings
         if self.config.encodings.contains(&Encoding::Utf16Be) {
             results.extend(self.extract_utf16be(data, base_offset));
+        }
+
+        // Extract GBK strings
+        if self.config.encodings.contains(&Encoding::Gbk) {
+            results.extend(self.extract_gbk(data, base_offset));
         }
 
         results
@@ -181,11 +195,14 @@ impl StringExtractor {
                     };
 
                     if self.matches_search_criteria(&content) {
+                        let (context_before, context_after) = self.extract_context(data, start, i);
                         results.push(FoundString {
                             offset: base_offset + start as u64,
                             content,
                             encoding,
                             byte_length,
+                            context_before,
+                            context_after,
                         });
                     }
                 }
@@ -239,11 +256,14 @@ impl StringExtractor {
                 if utf16_bytes.len() >= self.config.min_len {
                     if let Ok(content) = String::from_utf16(&utf16_bytes) {
                         if self.matches_search_criteria(&content) {
+                            let (context_before, context_after) = self.extract_context(data, start, i);
                             results.push(FoundString {
                                 offset: base_offset + start as u64,
                                 content,
                                 encoding: Encoding::Utf16Le,
                                 byte_length,
+                                context_before,
+                                context_after,
                             });
                         }
                     }
@@ -298,11 +318,99 @@ impl StringExtractor {
                 if utf16_bytes.len() >= self.config.min_len {
                     if let Ok(content) = String::from_utf16(&utf16_bytes) {
                         if self.matches_search_criteria(&content) {
+                            let (context_before, context_after) = self.extract_context(data, start, i);
                             results.push(FoundString {
                                 offset: base_offset + start as u64,
                                 content,
                                 encoding: Encoding::Utf16Be,
                                 byte_length,
+                                context_before,
+                                context_after,
+                            });
+                        }
+                    }
+                }
+            } else {
+                i += 1;
+            }
+        }
+
+        results
+    }
+
+    /// Extract GBK strings
+    fn extract_gbk(&self, data: &[u8], base_offset: u64) -> Vec<FoundString> {
+        let mut results = Vec::new();
+        let mut i = 0;
+        let data_len = data.len();
+
+        while i < data_len {
+            // Look for potential GBK string start
+            // GBK first byte ranges: 0x81-0xFE
+            if data[i] >= 0x81 && data[i] <= 0xFE {
+                let start = i;
+                let mut gbk_bytes = Vec::new();
+                let mut consecutive_invalid = 0;
+                const MAX_INVALID_BYTES: usize = 3; // Stop after too many invalid bytes
+                const MAX_STRING_LENGTH: usize = 1024; // Prevent extremely long strings
+
+                // Collect potential GBK bytes with limits
+                while i < data_len && gbk_bytes.len() < MAX_STRING_LENGTH {
+                    let byte = data[i];
+
+                    // Check for null terminator or control characters
+                    if byte == 0 || (byte < 0x20 && byte != 0x09) {
+                        break;
+                    }
+
+                    // ASCII printable characters are valid in GBK
+                    if byte >= 0x20 && byte <= 0x7E {
+                        gbk_bytes.push(byte);
+                        consecutive_invalid = 0;
+                        i += 1;
+                        continue;
+                    }
+
+                    // GBK double-byte character
+                    if byte >= 0x81 && byte <= 0xFE && i + 1 < data_len {
+                        let second_byte = data[i + 1];
+                        // GBK second byte ranges: 0x40-0x7E, 0x80-0xFE
+                        if (second_byte >= 0x40 && second_byte <= 0x7E) ||
+                           (second_byte >= 0x80 && second_byte <= 0xFE) {
+                            gbk_bytes.push(byte);
+                            gbk_bytes.push(second_byte);
+                            consecutive_invalid = 0;
+                            i += 2;
+                            continue;
+                        }
+                    }
+
+                    // Invalid byte - increment counter and stop if too many
+                    consecutive_invalid += 1;
+                    if consecutive_invalid >= MAX_INVALID_BYTES {
+                        break;
+                    }
+
+                    // Skip this invalid byte and continue
+                    i += 1;
+                }
+
+                let byte_length = i - start;
+                if gbk_bytes.len() >= self.config.min_len {
+                    // Try to decode as GBK - allow some errors for robustness
+                    let (decoded, _encoding, _had_errors) = GBK.decode(&gbk_bytes);
+                    // Only reject if the string is mostly errors or empty
+                    if !decoded.trim().is_empty() && decoded.chars().count() >= self.config.min_len / 2 {
+                        let content = decoded.into_owned();
+                        if self.matches_search_criteria(&content) {
+                            let (context_before, context_after) = self.extract_context(data, start, i);
+                            results.push(FoundString {
+                                offset: base_offset + start as u64,
+                                content,
+                                encoding: Encoding::Gbk,
+                                byte_length,
+                                context_before,
+                                context_after,
                             });
                         }
                     }
@@ -330,6 +438,30 @@ impl StringExtractor {
             true
         }
     }
+
+    /// Extract context bytes around a found string
+    fn extract_context(&self, data: &[u8], start: usize, end: usize) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+        if let Some(context_size) = self.config.context_bytes {
+            let before_start = start.saturating_sub(context_size);
+            let after_end = std::cmp::min(end + context_size, data.len());
+
+            let context_before = if before_start < start {
+                Some(data[before_start..start].to_vec())
+            } else {
+                None
+            };
+
+            let context_after = if end < after_end {
+                Some(data[end..after_end].to_vec())
+            } else {
+                None
+            };
+
+            (context_before, context_after)
+        } else {
+            (None, None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -344,6 +476,7 @@ mod tests {
             vec![EncodingType::Ascii],
             None,
             false,
+            None,
         ).unwrap();
 
         let data = b"Hello World! This is a test.";
@@ -361,6 +494,7 @@ mod tests {
             vec![EncodingType::Utf8],
             None,
             false,
+            None,
         ).unwrap();
 
         let data = "Hello 世界! Test string.".as_bytes();
@@ -377,6 +511,7 @@ mod tests {
             vec![EncodingType::Utf16Le],
             None,
             false,
+            None,
         ).unwrap();
 
         // "Hello" in UTF-16LE
@@ -389,12 +524,32 @@ mod tests {
     }
 
     #[test]
+    fn test_gbk_extraction() {
+        let extractor = StringExtractor::new(
+            4,
+            vec![EncodingType::Gbk],
+            None,
+            false,
+            None,
+        ).unwrap();
+
+        // "你好世界" (Hello World) in GBK encoding
+        let gbk_data = &[0xC4, 0xE3, 0xBA, 0xC3, 0xCA, 0xC0, 0xBD, 0xE7];
+        let results = extractor.extract_strings(gbk_data, 0);
+
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|s| s.content.contains("你好世界")));
+        assert!(results.iter().any(|s| s.encoding == Encoding::Gbk));
+    }
+
+    #[test]
     fn test_search_functionality() {
         let extractor = StringExtractor::new(
             4,
             vec![EncodingType::Ascii],
             Some("test".to_string()),
             false,
+            None,
         ).unwrap();
 
         let data = b"Hello World! This is a test. Another string.";
@@ -412,6 +567,7 @@ mod tests {
             vec![EncodingType::Ascii],
             Some(r"\d+".to_string()),
             true,
+            None,
         ).unwrap();
 
         let data = b"String with number 123 and another 456.";
@@ -429,6 +585,7 @@ mod tests {
             vec![EncodingType::Ascii],
             None,
             false,
+            None,
         ).unwrap();
 
         let data = b"Hi! This is a longer string that should be found.";
@@ -445,6 +602,7 @@ mod tests {
             vec![EncodingType::Ascii],
             None,
             false,
+            None,
         ).unwrap();
 
         let data = b"Start Hello World End";

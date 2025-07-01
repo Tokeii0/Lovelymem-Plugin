@@ -24,10 +24,22 @@ impl CsvOutput {
             "Encoding",
             "Length",
             "Content",
+            "ContextBefore",
+            "ContextAfter",
         ])?;
 
         // Write data rows
         for found_string in results {
+            let context_before = found_string.context_before
+                .as_ref()
+                .map(|bytes| hex::encode(bytes))
+                .unwrap_or_default();
+
+            let context_after = found_string.context_after
+                .as_ref()
+                .map(|bytes| hex::encode(bytes))
+                .unwrap_or_default();
+
             csv_writer.write_record(&[
                 file_path.to_string_lossy().as_ref(),
                 &format!("0x{:X}", found_string.offset),
@@ -35,6 +47,8 @@ impl CsvOutput {
                 &found_string.encoding.to_string(),
                 &found_string.byte_length.to_string(),
                 &found_string.content,
+                &context_before,
+                &context_after,
             ])?;
         }
 

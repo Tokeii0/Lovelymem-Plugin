@@ -15,6 +15,7 @@ A high-performance CLI tool for memory forensics string extraction.
 - UTF-8
 - UTF-16 Little Endian
 - UTF-16 Big Endian
+- GBK (Chinese character encoding)
 
 ## Installation
 
@@ -65,7 +66,7 @@ Options:
   -s, --search <PATTERN>      Search pattern (can be plain text or regex)
   -r, --regex                 Interpret search pattern as regex
       --no-progress           Disable progress bar
-  -e, --encoding <ENCODINGS>  Encoding types to search for [possible values: ascii, utf8, utf16le, utf16be]
+  -e, --encoding <ENCODINGS>  Encoding types to search for [possible values: ascii, utf8, utf16le, utf16be, gbk]
   -h, --help                  Print help
   -V, --version               Print version
 ```
@@ -77,7 +78,7 @@ The tool outputs results in CSV format with the following columns:
 - **FilePath**: Path to the input file
 - **Offset(Hex)**: Hexadecimal offset where the string was found
 - **Offset(Dec)**: Decimal offset where the string was found
-- **Encoding**: Detected encoding (ASCII, UTF-8, UTF-16LE, UTF-16BE)
+- **Encoding**: Detected encoding (ASCII, UTF-8, UTF-16LE, UTF-16BE, GBK)
 - **Length**: Length of the string in bytes
 - **Content**: The extracted string content
 
@@ -110,6 +111,11 @@ memstrap memory.raw -s "(?i)password" -r -o passwords.csv
 ### Extract only UTF-16 strings
 ```bash
 memstrap memory.raw -e utf16le -e utf16be -o utf16_strings.csv
+```
+
+### Extract Chinese text (GBK encoding)
+```bash
+memstrap memory.raw -e gbk -o chinese_strings.csv
 ```
 
 ## License

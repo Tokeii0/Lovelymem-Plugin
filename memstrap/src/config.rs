@@ -12,6 +12,8 @@ pub enum EncodingType {
     Utf16Le,
     #[value(name = "utf16be")]
     Utf16Be,
+    #[value(name = "gbk")]
+    Gbk,
 }
 
 /// Command line configuration
@@ -52,18 +54,16 @@ pub struct Config {
     #[arg(short = 'e', long = "encoding", value_enum)]
     pub encodings: Vec<EncodingType>,
 
-    /// Fast mode: only extract ASCII strings (faster for large files)
-    #[arg(long = "fast")]
-    pub fast_mode: bool,
+    /// Show context bytes around found strings (hex format)
+    #[arg(short = 'C', long = "context", value_name = "NUM_BYTES")]
+    pub context_bytes: Option<usize>,
 }
 
 impl Config {
-    /// Get the list of encodings to search for, defaulting to all if none specified
+    /// Get the list of encodings to search for, defaulting to original four if none specified
     pub fn get_encodings(&self) -> Vec<EncodingType> {
-        if self.fast_mode {
-            // Fast mode: only ASCII
-            vec![EncodingType::Ascii]
-        } else if self.encodings.is_empty() {
+        if self.encodings.is_empty() {
+            // Default to original four encodings (GBK is optional)
             vec![
                 EncodingType::Ascii,
                 EncodingType::Utf8,
